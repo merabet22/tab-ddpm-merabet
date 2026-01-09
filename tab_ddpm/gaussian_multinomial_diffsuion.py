@@ -101,6 +101,8 @@ class GaussianMultinomialDiffusion(torch.nn.Module):
         self.num_timesteps = num_timesteps
         self.parametrization = parametrization
         self.scheduler = scheduler
+        self.constraint_handler = constraint_handler
+        self.lambda_soft = lambda_soft
 
         alphas = 1. - get_named_beta_schedule(scheduler, num_timesteps)
         alphas = torch.tensor(alphas.astype('float64'))
@@ -119,6 +121,7 @@ class GaussianMultinomialDiffusion(torch.nn.Module):
         sqrt_one_minus_alphas_cumprod = np.sqrt(1.0 - alphas_cumprod)
         sqrt_recip_alphas_cumprod = np.sqrt(1.0 / alphas_cumprod)
         sqrt_recipm1_alphas_cumprod = np.sqrt(1.0 / alphas_cumprod - 1)
+
 
         # Gaussian diffusion
 
@@ -468,6 +471,11 @@ class GaussianMultinomialDiffusion(torch.nn.Module):
             full_sample.append(sample.unsqueeze(1))
         full_sample = torch.cat(full_sample, dim=1)
         log_sample = index_to_log_onehot(full_sample, self.num_classes)
+
+        # CDDM Projection: Ensure the resulting vector satisfies Eq. 91
+        if hasattr(self, 'constraint_handler'):
+            # Projects the categorical part of the vector back to the valid simplex
+            log_sample = self.constraint_handler.project(log_sample)
         return log_sample
 
     def q_sample(self, log_x_start, t):
@@ -588,7 +596,7 @@ class GaussianMultinomialDiffusion(torch.nn.Module):
 
             return -loss
     
-    def mixed_loss(self, x, out_dict):
+    def mixed_loss_(self, x, out_dict):
         b = x.shape[0]
         device = x.device
         t, pt = self.sample_time(b, device, 'uniform')
@@ -624,10 +632,25 @@ class GaussianMultinomialDiffusion(torch.nn.Module):
         if x_num.shape[1] > 0:
             loss_gauss = self._gaussian_loss(model_out_num, x_num, x_num_t, t, noise)
 
-        # loss_multi = torch.where(out_dict['y'] == 1, loss_multi, 2 * loss_multi)
-        # loss_gauss = torch.where(out_dict['y'] == 1, loss_gauss, 2 * loss_gauss)
+        # 1. Standard Diffusion Loss (Eq 22)
+         # The current code returns loss_multi and loss_gauss
+        loss_multi, loss_gauss = loss_multi.mean(), loss_gauss.mean()
 
-        return loss_multi.mean(), loss_gauss.mean()
+
+        # 2. CDDM Extension: Soft Constraint Regularization
+        if hasattr(self, 'constraint_handler') and self.lambda_soft > 0:
+            # Step: Recover x0_hat from the current noisy step (Algorithm 1, Line 8)
+            # Assuming DDPM formulation where x0_hat is derived from xt and predicted noise
+            t = torch.randint(0, self.num_timesteps, (x.shape[0],), device=self.device)
+            # (Internal logic to calculate x0_hat using self.sqrt_recip_alphas_cumprod etc.)
+            x0_hat = self._predict_x0_from_eps(x, t, eps_pred)
+
+            l_soft = self.constraint_handler.compute_soft_loss(x0_hat)
+            loss_gauss += self.lambda_soft * l_soft # Apply to continuous/total loss
+
+        return loss_multi, loss_gauss
+
+
     
     @torch.no_grad()
     def mixed_elbo(self, x0, out_dict):
@@ -764,6 +787,22 @@ class GaussianMultinomialDiffusion(torch.nn.Module):
         sample = mean_pred + nonzero_mask * sigma * noise
 
         return sample
+
+
+    # Add this method to GaussianMultinomialDiffusion in tab_ddpm.py
+    def _predict_x0_from_eps(self, x_t, t, eps):
+        """
+        Recover the clean data estimate x0 from noisy data xt and predicted noise.
+        Based on DDPM inversion logic required for CDDM Soft Constraints.
+        """
+        # Extract alpha_bar coefficients for the specific timesteps in the batch
+        sqrt_recip_alphas_cumprod = self.sqrt_recip_alphas_cumprod[t].view(-1, 1)
+        sqrt_recipm1_alphas_cumprod = self.sqrt_recipm1_alphas_cumprod[t].view(-1, 1)
+
+        # Implementation of the inversion formula
+        return sqrt_recip_alphas_cumprod * x_t - sqrt_recipm1_alphas_cumprod * eps
+
+
     
     @torch.no_grad()
     def gaussian_ddim_sample(
@@ -818,6 +857,10 @@ class GaussianMultinomialDiffusion(torch.nn.Module):
             out["pred_xstart"] * torch.sqrt(alpha_bar_next)
             + torch.sqrt(1 - alpha_bar_next) * eps
         )
+
+    # 2. CDDM Extension: Hard Constraint Projection (Line 19 of Algorithm 1)
+        if hasattr(self, 'constraint_handler'):
+            mean_pred = self.constraint_handler.project(mean_pred)
 
         return mean_pred
 

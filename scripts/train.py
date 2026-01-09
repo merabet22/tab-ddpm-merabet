@@ -4,6 +4,7 @@ import os
 import numpy as np
 import zero
 from tab_ddpm import GaussianMultinomialDiffusion
+from tab_ddpm.ddm_constraints import ConstraintHandler
 from utils_train import get_model, make_dataset, update_ema
 import lib
 import pandas as pd
@@ -24,6 +25,7 @@ class Trainer:
         self.log_every = 100
         self.print_every = 500
         self.ema_every = 1000
+        self.constraint_handler = ConstraintHandler(num_info=num_info, cat_info=cat_info, device=device)
 
     def _anneal_lr(self, step):
         frac_done = step / self.steps
@@ -90,7 +92,9 @@ def train(
     num_numerical_features = 0,
     device = torch.device('cuda:1'),
     seed = 0,
-    change_val = False
+    change_val = False,
+    constraint_config = None,  # Add this to capture the [constraints] section
+    **kwargs
 ):
     real_data_path = os.path.normpath(real_data_path)
     parent_dir = os.path.normpath(parent_dir)
@@ -131,6 +135,43 @@ def train(
 
 
 
+    # --- Generic CDDM Initialization Strategy ---
+
+    # 1. Automatically detect Categorical Slices
+    # K contains the sizes of each categorical feature (e.g., [3, 5, 2])
+    start_idx = num_numerical_features
+    cat_info = []
+    for size in K:
+        if size > 1: # Only features with more than 1 class are one-hot encoded
+            cat_info.append(slice(start_idx, start_idx + size))
+            start_idx += size
+        elif size == 1:
+            # Handling for binary features that might not be one-hot encoded
+            start_idx += 1
+
+    # 2. Automatically detect Numerical Bounds
+    # We inspect the training data to enforce non-negativity or existing range
+    num_info = []
+    if dataset.X_num is not None:
+        x_num_train = dataset.X_num['train']
+        for i in range(num_numerical_features):
+            col_min = float(x_num_train[:, i].min())
+            col_max = float(x_num_train[:, i].max())
+
+            # Strategy: Enforce non-negativity if the training data is strictly non-negative
+            # Otherwise, use the min/max observed in training as the hard boundary
+            safe_min = max(0.0, col_min) if col_min >= 0 else col_min
+            num_info.append((i, safe_min, col_max))
+
+    # 3. Initialize the Handler
+    from cddm_constraints import ConstraintHandler
+    constraint_handler = ConstraintHandler(
+        num_info=num_info,
+        cat_info=cat_info,
+        device=device
+    )
+
+
     diffusion = GaussianMultinomialDiffusion(
         num_classes=K,
         num_numerical_features=num_numerical_features,
@@ -138,7 +179,9 @@ def train(
         gaussian_loss_type=gaussian_loss_type,
         num_timesteps=num_timesteps,
         scheduler=scheduler,
-        device=device
+        device=device,
+        constraint_handler=constraint_handler,
+        lambda_soft=kwargs.get('lambda_soft', 0.1)
     )
     diffusion.to(device)
     diffusion.train()

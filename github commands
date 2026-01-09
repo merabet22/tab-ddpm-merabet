@@ -1,0 +1,5 @@
+git add *
+git commit -m "config for adult2 ds"
+git remote set-url origin git@github.com:merabet22/tab-ddpm-merabet.git
+git push -u origin main
+

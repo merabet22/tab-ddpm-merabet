@@ -5,6 +5,14 @@ model_type = "mlp"
 seed = 0
 device = "cuda:0"
 
+
+[constraints]
+lambda_soft = 0.5  # Weight for the soft constraint loss (Eq. 22)
+# Numerical bounds: [column_index, min, max]
+num_bounds = [[0, 0.0, 1.0], [4, 0.0, 1.0]]
+# Categorical groups (indices of one-hot encoded features)
+cat_groups = [[1, 2, 3], [5, 6, 7, 8]]
+
 [model_params]
 num_classes = 2
 is_y_cond = true
