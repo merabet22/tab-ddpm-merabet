@@ -25,7 +25,8 @@ class Trainer:
         self.log_every = 100
         self.print_every = 500
         self.ema_every = 1000
-        self.constraint_handler = ConstraintHandler(num_info=num_info, cat_info=cat_info, device=device)
+        self.constraint_handler = ConstraintHandler(num_info=num_info, cat_info=cat_info, device=device),
+        self.constraint_handler = self.diffusion.constraint_handler
 
     def _anneal_lr(self, step):
         frac_done = step / self.steps

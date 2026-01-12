@@ -71,7 +71,10 @@ class GaussianMultinomialDiffusion(torch.nn.Module):
             multinomial_loss_type='vb_stochastic',
             parametrization='x0',
             scheduler='cosine',
-            device=torch.device('cpu')
+            device=torch.device('cpu'),
+            onstraint_handler=None,  # Add this
+            lambda_soft=0.0,          # Add this if you want to use it for loss
+            **kwargs
         ):
 
         super(GaussianMultinomialDiffusion, self).__init__()
