@@ -164,7 +164,6 @@ def train(
             num_info.append((i, safe_min, col_max))
 
     # 3. Initialize the Handler
-    from cddm_constraints import ConstraintHandler
     constraint_handler = ConstraintHandler(
         num_info=num_info,
         cat_info=cat_info,
