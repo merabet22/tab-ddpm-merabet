@@ -4,7 +4,7 @@ import os
 import numpy as np
 import zero
 from tab_ddpm import GaussianMultinomialDiffusion
-from tab_ddpm.ddm_constraints import ConstraintHandler
+from tab_ddpm import ConstraintHandler
 from utils_train import get_model, make_dataset, update_ema
 import lib
 import pandas as pd
