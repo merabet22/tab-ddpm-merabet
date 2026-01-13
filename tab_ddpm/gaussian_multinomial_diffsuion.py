@@ -72,7 +72,7 @@ class GaussianMultinomialDiffusion(torch.nn.Module):
             parametrization='x0',
             scheduler='cosine',
             device=torch.device('cpu'),
-            onstraint_handler=None,  # Add this
+            constraint_handler=None,  # Add this
             lambda_soft=0.0,          # Add this if you want to use it for loss
             **kwargs
         ):
