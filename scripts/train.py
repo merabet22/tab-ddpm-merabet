@@ -10,7 +10,7 @@ import lib
 import pandas as pd
 
 class Trainer:
-    def __init__(self, diffusion, train_iter, lr, weight_decay, steps, device=torch.device('cuda:1'), constraint_handler):
+    def __init__(self, diffusion, train_iter, lr, weight_decay, steps, constraint_handler, device=torch.device('cuda:1')):
         self.diffusion = diffusion
         self.ema_model = deepcopy(self.diffusion._denoise_fn)
         for param in self.ema_model.parameters():
