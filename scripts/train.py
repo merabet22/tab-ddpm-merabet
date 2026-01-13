@@ -10,7 +10,7 @@ import lib
 import pandas as pd
 
 class Trainer:
-    def __init__(self, diffusion, train_iter, lr, weight_decay, steps, device=torch.device('cuda:1')):
+    def __init__(self, diffusion, train_iter, lr, weight_decay, steps, device=torch.device('cuda:1', constraint_handler):
         self.diffusion = diffusion
         self.ema_model = deepcopy(self.diffusion._denoise_fn)
         for param in self.ema_model.parameters():
@@ -25,8 +25,8 @@ class Trainer:
         self.log_every = 100
         self.print_every = 500
         self.ema_every = 1000
-        self.constraint_handler = ConstraintHandler(num_info=num_info, cat_info=cat_info, device=device),
-        self.constraint_handler = self.diffusion.constraint_handler
+        # Now correctly receiving the handler initialized in train()
+        self.constraint_handler = constraint_handler
 
     def _anneal_lr(self, step):
         frac_done = step / self.steps
@@ -164,7 +164,22 @@ def train(
             safe_min = max(0.0, col_min) if col_min >= 0 else col_min
             num_info.append((i, safe_min, col_max))
 
-    # 3. Initialize the Handler
+
+# 1. Use values from [constraints] in config.toml if available
+    if constraint_config:
+        # num_bounds = [[col, min, max], ...]
+        num_info = constraint_config.get('num_bounds', [])
+        # cat_groups = [[indices], ...] -> convert to slices
+        cat_info = [slice(g[0], g[-1] + 1) for g in constraint_config.get('cat_groups', [])]
+        lambda_soft = constraint_config.get('lambda_soft', 0.1)
+    else:
+        # Fallback to automatic detection logic (your previous implementation)
+        num_info = [] # ... (your previous auto-detection code)
+        cat_info = [] # ... (your previous auto-detection code)
+        lambda_soft = kwargs.get('lambda_soft', 0.1)
+
+
+    # 2. Initialize the Handler
     constraint_handler = ConstraintHandler(
         num_info=num_info,
         cat_info=cat_info,
@@ -192,7 +207,8 @@ def train(
         lr=lr,
         weight_decay=weight_decay,
         steps=steps,
-        device=device
+        device=device,
+        constraint_handler=constraint_handler
     )
     trainer.run_loop()
 
