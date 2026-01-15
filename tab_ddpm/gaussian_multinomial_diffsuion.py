@@ -76,11 +76,10 @@ class GaussianMultinomialDiffusion(torch.nn.Module):
             lambda_soft=0.0,          # Add this if you want to use it for loss
             **kwargs
         ):
-
+       
         super(GaussianMultinomialDiffusion, self).__init__()
         assert multinomial_loss_type in ('vb_stochastic', 'vb_all')
         assert parametrization in ('x0', 'direct')
-
         if multinomial_loss_type == 'vb_all':
             print('Computing the loss using the bound on _all_ timesteps.'
                   ' This is expensive both in terms of memory and computation.')
@@ -476,7 +475,7 @@ class GaussianMultinomialDiffusion(torch.nn.Module):
         log_sample = index_to_log_onehot(full_sample, self.num_classes)
 
         # CDDM Projection: Ensure the resulting vector satisfies Eq. 91
-        if hasattr(self, 'constraint_handler'):
+        if self.constraint_handler is not None:
             # Projects the categorical part of the vector back to the valid simplex
             log_sample = self.constraint_handler.project(log_sample)
         return log_sample
@@ -644,9 +643,9 @@ class GaussianMultinomialDiffusion(torch.nn.Module):
         if hasattr(self, 'constraint_handler') and self.lambda_soft > 0:
             # Step: Recover x0_hat from the current noisy step (Algorithm 1, Line 8)
             # Assuming DDPM formulation where x0_hat is derived from xt and predicted noise
-            t = torch.randint(0, self.num_timesteps, (x.shape[0],), device=self.device)
+            t = torch.randint(0, self.num_timesteps, (x.shape[0],), device=x.device)
             # (Internal logic to calculate x0_hat using self.sqrt_recip_alphas_cumprod etc.)
-            x0_hat = self._predict_x0_from_eps(x, t, eps_pred)
+            x0_hat = self._predict_x0_from_eps(x, t, eps)
 
             l_soft = self.constraint_handler.compute_soft_loss(x0_hat)
             loss_gauss += self.lambda_soft * l_soft # Apply to continuous/total loss
@@ -862,7 +861,7 @@ class GaussianMultinomialDiffusion(torch.nn.Module):
         )
 
     # 2. CDDM Extension: Hard Constraint Projection (Line 19 of Algorithm 1)
-        if hasattr(self, 'constraint_handler'):
+        if self.constraint_handler is not None:
             mean_pred = self.constraint_handler.project(mean_pred)
 
         return mean_pred

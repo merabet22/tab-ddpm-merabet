@@ -39,7 +39,7 @@ class Trainer:
         for k in out_dict:
             out_dict[k] = out_dict[k].long().to(self.device)
         self.optimizer.zero_grad()
-        loss_multi, loss_gauss = self.diffusion.mixed_loss(x, out_dict)
+        loss_multi, loss_gauss = self.diffusion.mixed_loss_(x, out_dict)
         loss = loss_multi + loss_gauss
         loss.backward()
         self.optimizer.step()
@@ -185,7 +185,14 @@ def train(
         cat_info=cat_info,
         device=device
     )
-
+    
+    # In train() function, after creating constraint_handler:
+    print(f"Constraint handler created: {constraint_handler}")
+    print(f"Constraint handler type: {type(constraint_handler)}")
+    if constraint_handler is not None:
+        print(f"Constraint handler has project method: {hasattr(constraint_handler, 'project')}")
+        print(f"Num info: {constraint_handler.num_info}")
+        print(f"Cat info: {constraint_handler.cat_info}")
 
     diffusion = GaussianMultinomialDiffusion(
         num_classes=K,
@@ -197,7 +204,9 @@ def train(
         device=device,
         constraint_handler=constraint_handler,
         lambda_soft=kwargs.get('lambda_soft', 0.1)
+        
     )
+   
     diffusion.to(device)
     diffusion.train()
 
